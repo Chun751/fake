@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>角色行動值計算器</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 800px;
+      margin: 2em auto;
+      padding: 0 10px;
+    }
+    h2 {
+      margin-top: 2em;
+    }
+    .form-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+    .form-row label {
+      flex: 0 0 160px;
+      min-width: 120px;
+      margin-bottom: 6px;
+    }
+    .form-row input, .form-row select {
+      flex: 1;
+      max-width: 120px;
+      padding: 6px 8px;
+      font-size: 1em;
+    }
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    button {
+      margin-top: 15px;
+      padding: 10px 20px;
+      cursor: pointer;
+      font-size: 1em;
+    }
+    .result {
+      margin-top: 20px;
+      font-weight: bold;
+      white-space: pre-line;
+    }
+    hr {
+      margin: 20px 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+    th, td {
+      border: 1px solid #aaa;
+      padding: 6px 8px;
+      text-align: center;
+    }
+    input[type="text"], input[type="number"] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 6px 8px;
+      font-size: 0.95em;
+    }
+    .delete-btn {
+      background: #ff6666;
+      border: none;
+      padding: 4px 8px;
+      cursor: pointer;
+      color: white;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    @media (max-width: 600px) {
+      .form-row label {
+        flex: 0 0 100%;
+        margin-bottom: 6px;
+        text-align: left;
+      }
+      .form-row input, .form-row select {
+        max-width: 100%;
+        flex: 1 1 100%;
+      }
+      .checkbox-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+      }
+      button {
+        width: 100%;
+        font-size: 1.1em;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<h1>角色行動值計算器</h1>
+
+<section>
+  <h2>行動值計算</h2>
+  <div class="form-row">
+    <label for="baseSpeed">角色基礎速度</label>
+    <input type="number" id="baseSpeed" value="107" min="0" />
+  </div>
+  <div class="form-row">
+    <label for="outerSpeed">角色局外速度</label>
+    <input type="number" id="outerSpeed" value="169" min="0" />
+  </div>
+  <div class="form-row">
+    <label for="otherSpeedBoost">其他速度加成(%)</label>
+    <input type="number" id="otherSpeedBoost" value="22" min="0" max="100" />
+  </div>
+  <div class="form-row">
+    <label for="advancePct">行動提前(%)</label>
+    <input type="number" id="advancePct" value="40" min="0" max="100" />
+  </div>
+  <div class="checkbox-row">
+    <label><input type="checkbox" id="wakeupAdvance" checked /> 翁瓦克行動提前(40%)</label>
+  </div>
+
+  <button id="calcBtn">計算行動次數</button>
+  <div class="result" id="calcResult"></div>
+</section>
+
+<hr />
+
+<section>
+  <h2>反推速度需求</h2>
+  <div class="form-row">
+    <label for="targetActions">預計要行動次數</label>
+    <input type="number" id="targetActions" value="4" min="1" />
+  </div>
+  <button id="reverseCalcBtn">反推速度</button>
+  <div class="result" id="reverseResult"></div>
+</section>
+
+<hr />
+
+<section>
+  <h2>角色記錄管理</h2>
+  <button id="addRecordBtn">＋新增角色</button>
+  <button id="saveRecordsBtn">💾 儲存所有角色記錄</button>
+  <table id="recordTable" aria-label="角色記錄表">
+    <thead>
+      <tr>
+        <th>角色名稱</th>
+        <th>基礎速度</th>
+        <th>光錐速度加成</th>
+        <th>光錐加成範圍</th>
+        <th>技能速度加成</th>
+        <th>技能類型</th>
+        <th>行動提前(%)</th>
+        <th>刪除</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<script>
+  const FIXED_ACTION_VALUE = 150;
+  const BASE_ACTION_COST = 10000;
+
+  // 計算局內速度
+  function calcInnerSpeed(baseSpeed, outerSpeed, otherBoostPercent) {
+    return outerSpeed + baseSpeed * (otherBoostPercent / 100);
+  }
+  // 計算行動值消耗
+  function actionCost(n, advancePercent, innerSpeed) {
+    return (n * BASE_ACTION_COST - BASE_ACTION_COST * advancePercent / 100) / innerSpeed;
+  }
+  // 計算可行動次數
+  function calcMaxActions(advancePercent, innerSpeed) {
+    let n = 1;
+    while(actionCost(n+1, advancePercent, innerSpeed) <= FIXED_ACTION_VALUE) {
+      n++;
+    }
+    return n;
+  }
+  // 反推局內速度需求
+  function reverseInnerSpeed(n, advancePercent) {
+    return (BASE_ACTION_COST * (n - advancePercent / 100)) / FIXED_ACTION_VALUE;
+  }
+  // 反推局外速度需求
+  function reverseOuterSpeed(innerSpeed, baseSpeed, otherBoostPercent) {
+    return innerSpeed - baseSpeed * (otherBoostPercent / 100);
+  }
+
+  // DOM
+  const baseSpeedInput = document.getElementById("baseSpeed");
+  const outerSpeedInput = document.getElementById("outerSpeed");
+  const otherBoostInput = document.getElementById("otherSpeedBoost");
+  const advanceInput = document.getElementById("advancePct");
+  const wakeupCheckbox = document.getElementById("wakeupAdvance");
+  const calcBtn = document.getElementById("calcBtn");
+  const calcResult = document.getElementById("calcResult");
+
+  const targetActionsInput = document.getElementById("targetActions");
+  const reverseCalcBtn = document.getElementById("reverseCalcBtn");
+  const reverseResult = document.getElementById("reverseResult");
+
+  const addRecordBtn = document.getElementById("addRecordBtn");
+  const saveRecordsBtn = document.getElementById("saveRecordsBtn");
+  const recordTableBody = document.querySelector("#recordTable tbody");
+
+  // 計算行動次數
+  function doCalc() {
+    const baseSpeed = parseFloat(baseSpeedInput.value) || 0;
+    const outerSpeed = parseFloat(outerSpeedInput.value) || 0;
+    const otherBoost = parseFloat(otherBoostInput.value) || 0;
+    let advance = parseFloat(advanceInput.value) || 0;
+    if(wakeupCheckbox.checked) advance = 40;
+
+    const innerSpeed = calcInnerSpeed(baseSpeed, outerSpeed, otherBoost);
+    const maxActions = calcMaxActions(advance, innerSpeed);
+    const nextActionCount = maxActions + 1;
+    const needInnerSpeed = reverseInnerSpeed(nextActionCount, advance);
+    const needOuterSpeed = reverseOuterSpeed(needInnerSpeed, baseSpeed, otherBoost);
+
+    let text = `角色局內速度為 ${innerSpeed.toFixed(2)}\n` +
+               `固定行動值 ${FIXED_ACTION_VALUE} 內，可行動 ${maxActions} 次\n\n` +
+               `若要行動 ${nextActionCount} 次，需局內速度達 ${needInnerSpeed.toFixed(2)}\n` +
+               `對應局外速度需達 ${needOuterSpeed.toFixed(2)}`;
+    calcResult.textContent = text;
+  }
+  calcBtn.addEventListener("click", doCalc);
+
+  // 反推速度需求
+  function doReverseCalc() {
+    const baseSpeed = parseFloat(baseSpeedInput.value) || 0;
+    const otherBoost = parseFloat(otherBoostInput.value) || 0;
+    const targetActions = parseInt(targetActionsInput.value) || 1;
+    let advance = parseFloat(advanceInput.value) || 0;
+    if(wakeupCheckbox.checked) advance = 40;
+    const innerSpeedNeeded = reverseInnerSpeed(targetActions, advance);
+    const outerSpeedNeeded = reverseOuterSpeed(innerSpeedNeeded, baseSpeed, otherBoost);
+
+    reverseResult.textContent = 
+      `要達到 ${targetActions} 次行動，局內速度需 ${innerSpeedNeeded.toFixed(2)}，` + 
+      `局外速度需 ${outerSpeedNeeded.toFixed(2)}`;
+  }
+  reverseCalcBtn.addEventListener("click", doReverseCalc);
+
+  // 角色記錄管理
+  let records = [];
+
+  // 從localStorage讀取記錄
+  function loadRecords() {
+    const saved = localStorage.getItem("actionCalcRecords");
+    if(saved) {
+      records = JSON.parse(saved);
+    } else {
+      records = [];
+    }
+  }
+  // 儲存到localStorage
+  function saveRecords() {
+    // 先把表格資料讀回 records
+    records = [];
+    const rows = recordTableBody.querySelectorAll("tr");
+    rows.forEach(row => {
+      const inputs = row.querySelectorAll("input, select");
+      if(inputs.length === 0) return;
+      const rec = {
+        name: inputs[0].value.trim(),
+        baseSpeed: parseFloat(inputs[1].value) || 0,
+        coneBoost: parseFloat(inputs[2].value) || 0,
+        coneRange: inputs[3].value,
+        skillBoost: parseFloat(inputs[4].value) || 0,
+        skillType: inputs[5].value,
+        advancePct: parseFloat(inputs[6].value) || 0
+      };
+      records.push(rec);
+    });
+    localStorage.setItem("actionCalcRecords", JSON.stringify(records));
+    alert("角色記錄已儲存");
+  }
+  saveRecordsBtn.addEventListener("click", saveRecords);
+
+  // 建立一列角色輸入框
+  function createRecordRow(record = {}) {
+    const tr = document.createElement("tr");
+
+    tr.innerHTML = `
+      <td><input type="text" value="${record.name||''}" placeholder="角色名稱" /></td>
+      <td><input type="number" value="${record.baseSpeed||0}" min="0" /></td>
+      <td><input type="number" value="${record.coneBoost||0}" min="0" /></td>
+      <td><input type="text" value="${record.coneRange||''}" placeholder="光錐加成範圍" /></td>
+      <td><input type="number" value="${record.skillBoost||0}" min="0" /></td>
+      <td>
+        <select>
+          <option value="星魂" ${record.skillType==='星魂'?'selected':''}>星魂</option>
+          <option value="天賦" ${record.skillType==='天賦'?'selected':''}>天賦</option>
+          <option value="無" ${record.skillType==='無'?'selected':''}>無</option>
+        </select>
+      </td>
+      <td><input type="number" value="${record.advancePct||0}" min="0" max="100" /></td>
+      <td><button class="delete-btn" type="button">刪除</button></td>
+    `;
+
+    // 刪除按鈕事件
+    tr.querySelector(".delete-btn").addEventListener("click", () => {
+      tr.remove();
+    });
+
+    return tr;
+  }
+
+  function renderRecords() {
+    recordTableBody.innerHTML = "";
+    records.forEach(rec => {
+      recordTableBody.appendChild(createRecordRow(rec));
+    });
+  }
+
+  addRecordBtn.addEventListener("click", () => {
+    recordTableBody.appendChild(createRecordRow());
+  });
+
+  // 頁面初始化
+  function init() {
+    loadRecords();
+    renderRecords();
+    doCalc();
+  }
+  init();
+
+</script>
+
+</body>
+</html>
